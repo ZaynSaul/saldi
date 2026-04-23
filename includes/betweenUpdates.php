@@ -4,7 +4,7 @@
 //               \__ \/ _ \| |_| |) | | _ | |) |  <
 //               |___/_/ \_|___|___/|_||_||___/|_\_\
 //
-// --- includes/betweenUpdates.php --- patch 4.0.9--- 2025.03.22
+// --- includes/betweenUpdates.php --- patch 5.0.0--- 2026.04.22
 // LICENSE
 //
 // This program is free software. You can redistribute it and / or
@@ -21,14 +21,53 @@
 // See GNU General Public License for more details.
 // http://www.saldi.dk/dok/GNU_GPL_v2.html
 //
-// Copyright (c) 2003-2025 Saldi.dk ApS
+// Copyright (c) 2003-2026 Saldi.dk ApS
 // ----------------------------------------------------------------------
 // The content of this file must be moved to opdat_4.1 in section 4.1.1 when 4.1.1 is to be released.
 
-$qtxt = "SELECT * FROM information_schema.columns WHERE table_name = 'adresser' and column_name = 'kontonr' limit 1";
+$qtxt = "SELECT data_type FROM information_schema.columns WHERE table_name = 'settings' and  column_name = 'group_id'";
+if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+	$qtxt = "ALTER TABLE settings ADD group_id integer";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+}
+
+$qtxt = "SELECT data_type FROM information_schema.columns WHERE table_name = 'variant_varer' and  column_name = 'variant_salgspris'";
+if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+	$qtxt = "ALTER TABLE variant_varer ADD variant_salgspris numeric(15,3)";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+}
+$qtxt = "SELECT data_type FROM information_schema.columns WHERE table_name = 'variant_varer' and  column_name = 'variant_text'";
+if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+	$qtxt = "ALTER TABLE variant_varer ADD variant_text varchar(25)";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+}
+$qtxt = "SELECT data_type FROM information_schema.columns WHERE table_name = 'kontoplan' and  column_name = 'map_to'";
+if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+	$qtxt = "ALTER TABLE kontoplan ADD column map_to numeric(15)";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+}
+
+$qtxt = "SELECT data_type FROM information_schema.columns WHERE table_name = 'tutorials'";
+if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+	$qtxt = "CREATE TABLE tutorials (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, tutorial_id varchar(10), selector TEXT)";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+}
+
+# Enables docs (bilag)
+$qtxt = "update grupper set box6 = 'on' where art = 'bilag'";
+db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+
+$qtxt = "SELECT data_type FROM information_schema.columns WHERE table_name = 'adresser' and column_name = 'kontonr' limit 1";
 $r = db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__));
-if ($r['data_type'] == 'numeric') {
+if ($r[0] == 'numeric') {
 	$qtxt = "ALTER TABLE adresser ALTER column kontonr TYPE varchar(30)";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+}
+
+$qtxt = "SELECT data_type FROM information_schema.columns WHERE table_name = 'pbs_kunder' and column_name = 'kontonr' limit 1";
+$r = db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__));
+if ($r[0] == 'numeric' || $r[0] == 'integer') {
+	$qtxt = "ALTER TABLE pbs_kunder ALTER column kontonr TYPE varchar(30)";
 	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
 }
 
@@ -72,12 +111,38 @@ if (db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
 		$qtxt = "ALTER TABLE datatables ADD COLUMN date_range_meta TEXT";
 		db_modify($qtxt, __FILE__ . " linje " . __LINE__);
 	}
+	$qtxt = "SELECT column_name FROM information_schema.columns WHERE table_name = 'datatables' and column_name = 'rowcount'";
+	if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+		$qtxt = "ALTER TABLE datatables ADD COLUMN rowcount INT";
+		db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+	}
+	$qtxt = "SELECT column_name FROM information_schema.columns WHERE table_name = 'datatables' and column_name = 'offset'";
+	if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+		$qtxt = "ALTER TABLE datatables ADD COLUMN \"offset\" INT";
+		db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+	}
+	$qtxt = "SELECT column_name FROM information_schema.columns WHERE table_name = 'datatables' and column_name = 'sort'";
+	if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+		$qtxt = "ALTER TABLE datatables ADD COLUMN sort TEXT";
+		db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+	}
 } else {
 	$qtxt = "CREATE TABLE datatables (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, tabel_id TEXT, column_setup TEXT, search_setup TEXT, ";
 	$qtxt.= "filter_setup TEXT, rowcount INTEGER, \"offset\" INTEGER, sort TEXT, date_range_meta TEXT)";
 	db_modify($qtxt, __FILE__ . " line " . __LINE__);
 }
 db_modify("ALTER TABLE brugere ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45) NULL", __FILE__ . " linje " . __LINE__);
+#db_modify("ALTER TABLE brugere ADD COLUMN IF NOT EXISTS twofactor TINYINT(1) DEFAULT 0", __FILE__ . " linje " . __LINE__);
+$qtxt = "SELECT column_name FROM information_schema.columns WHERE table_name = 'brugere' and column_name = 'twofactor'";
+if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+	$qtxt = "ALTER TABLE brugere ADD COLUMN twofactor bool";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+}
+$qtxt = "SELECT column_name FROM information_schema.columns WHERE table_name = 'brugere' and column_name = 'email'";
+if (!db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__))) {
+	$qtxt = "ALTER TABLE brugere ADD COLUMN email text";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+}
 
 // Check if the column already exists
 $qtxt = "SELECT column_name FROM information_schema.columns WHERE table_name = 'brugere' AND column_name = 'ip_address'";

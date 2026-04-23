@@ -4,7 +4,7 @@
 //               \__ \/ _ \| |_| |) | | _ | |) |  <
 //               |___/_/ \_|___|___/|_||_||___/|_\_\
 //
-// --- debitor/ordre.php --- patch 5.0.0 --- 2026-03-12 ---
+// --- debitor/ordre.php --- patch 5.0.0 --- 2026-04-23 ---
 // LICENSE
 //
 // This program is free software. You can redistribute it and / or
@@ -71,10 +71,12 @@
 // 20260304 Sawaneh SD-369 dfm_url override from pickup address
 // 20260305 PHR removed quickfix 20260304 as it made delivey when order was saved
 // 20260313 Sawaneh SD-369 stock/lager changes commented out pending review
-
 // 20260312 PHR Fixed random product added when copying og crediting an order
 // 20260326 Sawaneh Fixed Fix ourRefStockSwitch order setting to find alternate warehouse when stock is empty
-
+// 20260415 PHR Modtag (Receive) was set to 0 in creditnote
+// 20260420 PHR Removed GLS codes
+// 20260422 PHR Defined $fast_db as array; 
+// 20260432	PHR Warning when $ref id changes
 
 @session_start();
 $s_id = session_id();
@@ -559,7 +561,7 @@ if (!strstr($fokus, 'lev_') && isset($_GET['konto_id']) && is_numeric($_GET['kon
 		}
 		if ($r['pbs_nr'] > 0) {
 			$pbs_nr = $r['pbs_nr'];
-			$pbs = 'bs';
+			$pbs = 'PBS';
 		}
 		$kontakt = db_escape_string($r['kontakt']);
 		$notes = db_escape_string($r['notes']);
@@ -857,7 +859,7 @@ if (($b_submit || isset($_POST['udskriv_til'])) && $id = $_POST['id']) {
 	}
 	if (substr($udskriv_til, 0, 3) == 'PBS') {
 		$udskriv_til = 'PBS';
-		$pbs = "BS";
+		$pbs = "PBS";
 	}
 	if ($udskriv_til == 'oioubl') $oioubl = "on";
 
@@ -1078,6 +1080,9 @@ if ($b_submit) {
 				if ($r_afd && $r_afd['kodenr']) $afd_lager = $r_afd['kodenr'];
 			}
 		}
+		$alerttxt = "Ref ændret til $ref";
+		if ($afd) $alerttxt.= " & afd til $afd";
+		alert ("$alerttxt");
 	}
 
 	if ($extAfd && $afd && $extAfd != $afd) {
@@ -1813,6 +1818,7 @@ if (($status < 3 || strstr($b_submit, "Kopi") || strstr($b_submit, "Kred")) && $
 						}
 					}
 				}
+				// kun gældende for negative referancer
 				if (!isset($modtaget[$x])) $modtaget[$x] = 0;
 				$query = db_select("select antal from batch_salg where linje_id = $linje_id[$x]", __FILE__ . " linje " . __LINE__);
 				while ($row = db_fetch_array($query)) $modtaget[$x] = $modtaget[$x] + $row['antal'];
@@ -1966,8 +1972,7 @@ if (($status < 3 || strstr($b_submit, "Kopi") || strstr($b_submit, "Kred")) && $
 					elseif ($antal[$x] > 0 && $leveres[$x] > $antal[$x]) {
 						$leveres[$x] = $antal[$x];
 					} elseif ($leveres[$x] < 0) {
-						if (abs($leveres[$x]) > abs($tidl_lev[$x]))
-							$leveres[$x] = $tidl_lev[$x] * -1;
+						if (abs($leveres[$x]) > abs($tidl_lev[$x]) && $art == 'DO' && $antal[$x] > 0) $leveres[$x] = $tidl_lev[$x] * -1; #20260415
 					}
 					if (!$rabat[$x]) $rabat[$x] = 0;
 					if (!$kostpris[$x]) $kostpris[$x] = 0;
@@ -3218,11 +3223,6 @@ function ordreside($id, $regnskab)
 			$fakturadato = dkdato(if_isset($row, NULL, 'fakturadate'));
 		}
 
-		/*
-			$gls_username = "2080050875";
-			$gls_pass = "50875";
-			$gls_id = "2080050875";
-*/
 		// Gls label setup
 		if (isset($_REQUEST['gls_go'])) {  // BZ
 			db_modify("update ordrer set gls_label = true where id = '$id'", __FILE__ . " linje " . __LINE__);
@@ -3729,7 +3729,7 @@ function ordreside($id, $regnskab)
 		if ($lev_pbs_nr) {
 			if ($tmp == 'L') {
 				if ($pbs) print "<option value=\"PBS\">PBS</option>\n";
-				elseif ($tmp && $udskriv_til != "PBS" && $lev_pbs == 'B') print "<option title=\"" . findtekst('1452|Opkræves via betalingsservice', $sprog_id) . "\">BS</option>\n";
+				elseif ($tmp && $udskriv_til != "PBS" && $lev_pbs == 'B') print "<option title=\"" . findtekst('1452|Opkræves via betalingsservice', $sprog_id) . "\">PBS</option>\n";
 			}
 		}
 		$qtxt = "select * from grupper where ART = 'bilag' and (box6 ='on' or (box1 !='' and box2 !='' and box3 !=''))";
@@ -4570,7 +4570,7 @@ function ordreside($id, $regnskab)
 		if ($showLocalPrint && $localPrint == 'on') {
 			$udskriv_til = 'localPrint';
 			print "<option value=\"localPrint\">" . findtekst('2531|Lokal printer', $sprog_id) . "</option>\n";
-		} elseif ($udskriv_til == "PBS" && $lev_pbs != 'B') print "<option value=\"PBS\">BS</option>\n";
+		} elseif ($udskriv_til == "PBS" && $lev_pbs != 'B') print "<option value=\"PBS\">PBS</option>\n";
 		else print "<option>$udskriv_til</option>\n";
 		if ($udskriv_til != "PDF") print "<option>PDF</option>\n";
 		if ($showLocalPrint && $localPrint != 'on') print "<option value='localPrint'>" . findtekst('2531|Lokal printer', $sprog_id) . "</option>\n";
@@ -4591,7 +4591,7 @@ function ordreside($id, $regnskab)
 				if ($tmp) print "<option value=\"PBS\">PBS</option>\n";
 			} else {
 				if ($udskriv_til != "PBS" && $lev_pbs != 'B') print "<option value=\"PBS_FI\">PBS</option>\n";
-				elseif ($tmp && $udskriv_til != "PBS" && $lev_pbs == 'B') print "<option title=\"" . findtekst('1452|Opkræves via betalingsservice', $sprog_id) . "\">BS</option>\n";
+				elseif ($tmp && $udskriv_til != "PBS" && $lev_pbs == 'B') print "<option title=\"" . findtekst('1452|Opkræves via betalingsservice', $sprog_id) . "\">PBS</option>\n";
 			}
 		}
 		print "</SELECT></td></tr>\n";
@@ -5187,7 +5187,7 @@ $x = 0;
 		if (!$ordre_id) $ordre_id = 0;
 		$kostpris[0] = $kostsum = 0;
 		$blandet_moms = $lagervarer = $tGrossWeight = $tNetWeight = $tVolume = 0;
-
+		$fast_db=array();
 		$qtxt = "select * from ordrelinjer where ordre_id = '$ordre_id' order by posnr";
 		$q = db_select($qtxt, __FILE__ . " linje " . __LINE__);
 		$lines_found = 0;
@@ -5222,7 +5222,7 @@ $x = 0;
 				$m_rabat[$x]         = $row['m_rabat'] * -1;
 				$folgevare[$x]       = $row['folgevare'] * 1;
 				$varemomssats[$x]    = $row['momssats'] * 1;
-				$fast_db[$x]         = $row['fast_db'] * 1;
+				$fast_db[$x]         = (float)$row['fast_db'] * 1;
 				$saet[$x]            = $row['saet'];
 				$lev_varenr[$x]      = $row['lev_varenr'];
 				$kostpris[$x]        = $row['kostpris'];
