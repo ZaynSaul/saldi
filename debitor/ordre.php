@@ -111,7 +111,69 @@ include("../includes/std_func.php");
 
 
 include("../includes/connect.php");
+
+// Restore scaffolding context (sag_id) from the order record itself when the URL/POST didn't carry it.
+// Many flows redirect back to ordre.php without sag_id (levering.php, bogfor.php, accountLookup,
+// sync_stamkort.php, etc.), which used to drop us back into finance styling. Resolving here — before
+// online.php runs and emits the finance-button color override — keeps scaffolding styling stable.
+if (empty($_GET['sag_id']) && empty($_POST['sag_id'])) {
+    $sag_id_lookup = isset($_GET['id']) ? $_GET['id'] : (isset($_POST['id']) ? $_POST['id'] : null);
+    if ($sag_id_lookup !== null && is_numeric($sag_id_lookup) && (int)$sag_id_lookup > 0) {
+        $r_sag = db_fetch_array(db_select("select sag_id from ordrer where id='" . db_escape_string($sag_id_lookup) . "'", __FILE__ . " linje " . __LINE__));
+        if ($r_sag && !empty($r_sag['sag_id']) && (int)$r_sag['sag_id'] > 0) {
+            $_GET['sag_id'] = $r_sag['sag_id'];
+        }
+    }
+}
+
 include("../includes/online.php");
+
+// Defensive scaffolding-context button restore.
+// online.php may emit a global `input[type=submit/button] { background:#114691 !important }` rule.
+// When sag_id is present we re-apply the scaffolding `.button .green/.blue/.gray/.white/...`
+// colors with higher specificity + !important so they win, even if some other path slips the
+// finance override past the gate.
+if (!empty($_GET['sag_id']) || !empty($_POST['sag_id'])) {
+    print "<style>
+        input.button.green, input[type=\"submit\"].green, input[type=\"button\"].green {
+            background: linear-gradient(to bottom, #7db72f, #4e7d0e) !important;
+            background-color: #64991e !important;
+            color: #e8f0de !important;
+            border: solid 1px #538312 !important;
+        }
+        input.button.blue, input[type=\"submit\"].blue, input[type=\"button\"].blue {
+            background: linear-gradient(to bottom, #00adee, #0078a5) !important;
+            background-color: #0095cd !important;
+            color: #d9eef7 !important;
+            border: solid 1px #0076a3 !important;
+        }
+        input.button.gray, input[type=\"submit\"].gray, input[type=\"button\"].gray {
+            background: linear-gradient(to bottom, #888888, #575757) !important;
+            background-color: #6e6e6e !important;
+            color: #e9e9e9 !important;
+            border: solid 1px #555555 !important;
+        }
+        input.button.white, input[type=\"submit\"].white, input[type=\"button\"].white {
+            background: linear-gradient(to bottom, #ffffff, #ededed) !important;
+            background-color: #ffffff !important;
+            color: #606060 !important;
+            border: solid 1px #b7b7b7 !important;
+        }
+        input.button.rosy, input[type=\"submit\"].rosy, input[type=\"button\"].rosy {
+            background: linear-gradient(to bottom, #f29797, #b73030) !important;
+            background-color: #be4646 !important;
+            color: #fae7e7 !important;
+            border: solid 1px #962f2f !important;
+        }
+        input.button.orange, input[type=\"submit\"].orange, input[type=\"button\"].orange {
+            background: linear-gradient(to bottom, #faa51a, #f47a20) !important;
+            background-color: #f78d1d !important;
+            color: #fef4e9 !important;
+            border: solid 1px #da7c0c !important;
+        }
+    </style>\n";
+}
+
 include("../includes/var2str.php");
 include("../includes/ordrefunc.php");
 
@@ -370,7 +432,8 @@ if ($sort && $fokus && $b_submit == 'vareOpslag') {
 	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
 	// Redirect to new grid-based product lookup page
 	$bordnr_param = isset($bordnr) && $bordnr ? "&bordnr=$bordnr" : "";
-	$url = "productLookup.php?id=$id&art=$art&sort=$sort&fokus=$fokus&vis_kost=$vis_kost&ref=" . urlencode($ref) . "$bordnr_param";
+	$sag_id_param = !empty($sag_id) ? "&sag_id=" . urlencode($sag_id) : "";
+	$url = "productLookup.php?id=$id&art=$art&sort=$sort&fokus=$fokus&vis_kost=$vis_kost&ref=" . urlencode($ref) . "$bordnr_param$sag_id_param";
 	if (isset($afd_lager)) $url .= "&lager=$afd_lager";
 	header("Location: $url");
 	exit;
@@ -1143,7 +1206,10 @@ if ($b_submit) {
 			$r = db_fetch_array(db_select("select * from ordrer where id='$id'", __FILE__ . " linje " . __LINE__));
 
 			$qtxt = "insert into ordrer (konto_id,firmanavn,addr1,addr2,postnr,bynavn,land,kontakt,kontakt_tlf,email,mail_fakt,phone,udskriv_til,kundeordnr,";
-			$qtxt .= "lev_navn,lev_addr1,lev_addr2,lev_postnr,lev_bynavn,lev_land,lev_email,lev_kontakt,lev_email,lev_land,ean,institution,betalingsbet,betalingsdage,kontonr,cvrnr,art,";
+			// Bugfix: lev_email and lev_land were each listed twice in this column list, which Postgres
+			// rejects with `column "lev_email" specified more than once`. The duplicate values list below
+			// has also been collapsed back to a single lev_kontakt value to match.
+			$qtxt .= "lev_navn,lev_addr1,lev_addr2,lev_postnr,lev_bynavn,lev_land,lev_email,lev_kontakt,ean,institution,betalingsbet,betalingsdage,kontonr,cvrnr,art,";
 			$qtxt .= "valuta,valutakurs,sprog,projekt,ordredate,";
 			if ($r['levdate']) $qtxt .= "levdate,";
 			if ($r['fakturadate']) $qtxt .= "fakturadate,";
@@ -1164,7 +1230,7 @@ if ($b_submit) {
 			$qtxt .= "'" . db_escape_string($r['kundeordnr']) . "','" . db_escape_string($r['lev_navn']) . "','" . db_escape_string($r['lev_addr1']) . "',";
 			$qtxt .= "'" . db_escape_string($r['lev_addr2']) . "','" . db_escape_string($r['lev_postnr']) . "','" . db_escape_string($r['lev_bynavn']) . "',";
 			$qtxt .= "'" . db_escape_string($r['lev_land']) . "','" . db_escape_string($r['lev_email']) . "',";
-			$qtxt .= "'" . db_escape_string($r['lev_kontakt']) . "','" . db_escape_string($r['lev_email']) . "','" . db_escape_string($r['lev_land']) . "',";
+			$qtxt .= "'" . db_escape_string($r['lev_kontakt']) . "',";
 			$qtxt .= "'" . db_escape_string($r['ean']) . "','" . db_escape_string($r['institution']) . "',";
 			$qtxt .= "'" . db_escape_string($r['betalingsbet']) . "','" . db_escape_string($r['betalingsdage']) . "','" . db_escape_string($r['kontonr']) . "',";
 			$qtxt .= "'" . db_escape_string($r['cvrnr']) . "','OT','" . db_escape_string($r['valuta']) . "',";
@@ -2184,7 +2250,8 @@ if (($status < 3 || strstr($b_submit, "Kopi") || strstr($b_submit, "Kred")) && $
 					// Not an exact match - redirect to product lookup with the entered value as search term
 					$find_param = urlencode($varenr0_original);
 					$bordnr_param = isset($bordnr) ? "&bordnr=$bordnr" : "";
-					$url = "productLookup.php?id=$id&art=$art&sort=$sort&fokus=varenr&vis_kost=$vis_kost&ref=" . urlencode($ref) . "&find=$find_param$bordnr_param";
+					$sag_id_param = !empty($sag_id) ? "&sag_id=" . urlencode($sag_id) : "";
+					$url = "productLookup.php?id=$id&art=$art&sort=$sort&fokus=varenr&vis_kost=$vis_kost&ref=" . urlencode($ref) . "&find=$find_param$bordnr_param$sag_id_param";
 					if (isset($afd_lager)) $url .= "&lager=$afd_lager";
 					header("Location: $url");
 					exit;
@@ -2491,10 +2558,11 @@ if ((strstr($b_submit, "Udskriv")) || (strstr($b_submit, "Send"))) {
 				$mail_fakt = 'on';
 				$udskriv_til = 'email';
 				// Redirect to print invoice as email
+				$sag_q = $sag_id ? "&sag_id=" . urlencode($sag_id) : "";
 				if ($popup) {
-					print "<BODY onLoad=\"JavaScript:window.open('formularprint.php?id=$id&formular=4&udskriv_til=email&lagervarer=$lagervarer' ,'' ,'$jsvars');\">\n";
+					print "<BODY onLoad=\"JavaScript:window.open('formularprint.php?id=$id&formular=4&udskriv_til=email&lagervarer=$lagervarer$sag_q' ,'' ,'$jsvars');\">\n";
 				} else {
-					print "<meta http-equiv=\"refresh\" content=\"0;URL=formularprint.php?id=$id&formular=4&udskriv_til=email&lagervarer=$lagervarer\">\n";
+					print "<meta http-equiv=\"refresh\" content=\"0;URL=formularprint.php?id=$id&formular=4&udskriv_til=email&lagervarer=$lagervarer$sag_q\">\n";
 				}
 			}
 		}
@@ -2615,9 +2683,10 @@ if ((strstr($b_submit, "Udskriv")) || (strstr($b_submit, "Send"))) {
 		$oioubl = '';
 		$edifakt = '';
 		#    if ($udskriv_til!='historik') $udskriv_til='';
-		if ($popup) print "<BODY onLoad=\"JavaScript:window.open('$ps_fil?id=$id&formular=$formular&udskriv_til=$udskriv_til&lagervarer=$lagervarer' ,'' ,',statusbar=no,menubar=no,titlebar=no,toolbar=no,scrollbars=yes,location=1');\">\n";
+		$sag_q = $sag_id ? "&sag_id=" . urlencode($sag_id) : "";
+		if ($popup) print "<BODY onLoad=\"JavaScript:window.open('$ps_fil?id=$id&formular=$formular&udskriv_til=$udskriv_til&lagervarer=$lagervarer$sag_q' ,'' ,',statusbar=no,menubar=no,titlebar=no,toolbar=no,scrollbars=yes,location=1');\">\n";
 		else {
-			print "<meta http-equiv=\"refresh\" content=\"0;URL=$ps_fil?id=$id&formular=$formular&udskriv_til=$udskriv_til&lagervarer=$lagervarer\">\n";
+			print "<meta http-equiv=\"refresh\" content=\"0;URL=$ps_fil?id=$id&formular=$formular&udskriv_til=$udskriv_til&lagervarer=$lagervarer$sag_q\">\n";
 		}
 	}
 }
@@ -2817,7 +2886,8 @@ if ($swap_account || strstr($b_submit, 'Opslag') || strstr($b_submit, 'Gem') && 
 		// Redirect to new grid-based product lookup page
 		$find_param = isset($varenr[0]) ? urlencode($varenr[0]) : '';
 		$bordnr_param = isset($bordnr) ? "&bordnr=$bordnr" : "";
-		$url = "productLookup.php?id=$id&art=$art&sort=$sort&fokus=varenr&vis_kost=$vis_kost&ref=" . urlencode($ref) . "&find=$find_param$bordnr_param";
+		$sag_id_param = !empty($sag_id) ? "&sag_id=" . urlencode($sag_id) : "";
+		$url = "productLookup.php?id=$id&art=$art&sort=$sort&fokus=varenr&vis_kost=$vis_kost&ref=" . urlencode($ref) . "&find=$find_param$bordnr_param$sag_id_param";
 		if (isset($afd_lager)) $url .= "&lager=$afd_lager";
 		header("Location: $url");
 		exit;
@@ -2825,7 +2895,8 @@ if ($swap_account || strstr($b_submit, 'Opslag') || strstr($b_submit, 'Gem') && 
 	if (strstr($fokus, 'besk') && $beskrivelse[0] && $art != 'DK') {
 		// Redirect to new grid-based product lookup page
 		$bordnr_param = isset($bordnr) ? "&bordnr=$bordnr" : "";
-		$url = "productLookup.php?id=$id&art=$art&sort=$sort&fokus=beskrivelse&vis_kost=$vis_kost&ref=" . urlencode($ref) . "&find=" . urlencode($beskrivelse[0]) . "$bordnr_param";
+		$sag_id_param = !empty($sag_id) ? "&sag_id=" . urlencode($sag_id) : "";
+		$url = "productLookup.php?id=$id&art=$art&sort=$sort&fokus=beskrivelse&vis_kost=$vis_kost&ref=" . urlencode($ref) . "&find=" . urlencode($beskrivelse[0]) . "$bordnr_param$sag_id_param";
 		if (isset($afd_lager)) $url .= "&lager=$afd_lager";
 		header("Location: $url");
 		exit;
@@ -3018,7 +3089,33 @@ if (strstr($b_submit, 'Lev') && $bogfor != 0 && $status < 3) {
 	$alert = findtekst('1847|Du kan ikke levere uden ordrelinjer', $sprog_id);
 	if (!$x) print "<BODY onLoad=\"javascript:alert('$alert')\">\n";
 	else {
-		print "<meta http-equiv=\"refresh\" content=\"0;URL=levering.php?id=$id\">\n";
+		// Check for expired/near-expiry batches before delivery
+		$expiry_warnings = array();
+		$warning_days = get_due_date_warning_days();
+		for ($ew = 1; $ew <= $linjeantal; $ew++) {
+			if ($vare_id[$ew] && item_has_due_date($vare_id[$ew]) && $leveres[$ew] > 0) {
+				$_lager_ew = isset($lager[$ew]) ? $lager[$ew] : 0;
+				$_qtxt = fefo_batch_query($vare_id[$ew], $_lager_ew);
+				$_q = db_select($_qtxt, __FILE__ . " linje " . __LINE__);
+				if ($_r = db_fetch_array($_q)) {
+					$_status = batch_expiry_status($_r['due_date'], $warning_days);
+					$_vnr = db_fetch_array(db_select("select varenr from varer where id='$vare_id[$ew]'", __FILE__ . " linje " . __LINE__));
+					if ($_status == 'expired') {
+						$expiry_warnings[] = "UDLOBET: " . $_vnr['varenr'] . " (batch " . ($_r['batch_no'] ? $_r['batch_no'] : $_r['id']) . ", udl. " . $_r['due_date'] . ")";
+					} elseif ($_status == 'warning') {
+						$_days = days_until_expiry($_r['due_date']);
+						$expiry_warnings[] = "Udlober snart: " . $_vnr['varenr'] . " (" . $_days . " dage, batch " . ($_r['batch_no'] ? $_r['batch_no'] : $_r['id']) . ")";
+					}
+				}
+			}
+		}
+		if (count($expiry_warnings) && !isset($_GET['confirm_expiry'])) {
+			$warn_msg = implode("\\n", $expiry_warnings);
+			$warn_msg .= "\\n\\nFortsaet med levering?";
+			print "<script>if(confirm('" . addslashes($warn_msg) . "')) { window.location='levering.php?id=$id'; } else { window.location='ordre.php?id=$id'; }</script>\n";
+		} else {
+			print "<meta http-equiv=\"refresh\" content=\"0;URL=levering.php?id=$id\">\n";
+		}
 	}
 }
 $meta_returside = "<meta http-equiv=\"refresh\" content=\"3600;URL=$returside\">\n"; #20142403-2
@@ -3475,10 +3572,20 @@ function ordreside($id, $regnskab)
 		$jobkort .= "<input type=\"button\" style=\"width:125px; border-radius: 4px;margin: 5px;\" value=\"" . lcfirst(findtekst('1098|Jobkort', $sprog_id)) . "\" ";
 		$jobkort .= "onClick=\"window.navigate('$url')\"></a>"; #20210630
 	} else $jobkort = NULL;
-	$url = "debitorkort.php?returside=ordre.php&konto_id=$konto_id&ordre_id=$id";
-	$debitorkort = "<a href=$url style=\"text-decoration:none\">";
-	$debitorkort .= "<input type=\"button\" id='debitorkort' style=\"width:125px; border-radius: 4px;\" value=\"" . findtekst('356|Debitorkort', $sprog_id) . "\" ";
-	$debitorkort .= "onClick=\"window.navigate('$url')\"></a>";
+	// In scaffolding context (sag_id), link the "Debitorkort" button directly to the specific
+	// scaffolding customer card (funktion=ret_kunde) and use the scaffolding button classes
+	// instead of the finance inline style so it inherits the correct visual treatment.
+	if ($sag_id) {
+		$url = "../sager/kunder.php?funktion=ret_kunde&konto_id=$konto_id&sag_id=$sag_id";
+		$debitorkort = "<a href=\"$url\" style=\"text-decoration:none\">";
+		$debitorkort .= "<input type=\"button\" id='debitorkort' class=\"button white small\" value=\"" . findtekst('356|Debitorkort', $sprog_id) . "\" ";
+		$debitorkort .= "onClick=\"window.navigate('$url')\"></a>";
+	} else {
+		$url = "debitorkort.php?returside=ordre.php&konto_id=$konto_id&ordre_id=$id";
+		$debitorkort = "<a href=$url style=\"text-decoration:none\">";
+		$debitorkort .= "<input type=\"button\" id='debitorkort' style=\"width:125px; border-radius: 4px;\" value=\"" . findtekst('356|Debitorkort', $sprog_id) . "\" ";
+		$debitorkort .= "onClick=\"window.navigate('$url')\"></a>";
+	}
 	if ($status < 3 && $cvrnr && !is_numeric(substr($cvrnr, 2, 9))) {
 		$alert = findtekst('1848|Kontroller CVR nr', $sprog_id);
 		if (substr($db, 0, 6) == 'rotary') $cvrnr = NULL;
@@ -3784,19 +3891,21 @@ function ordreside($id, $regnskab)
 			if ($betalings_id) print "<tr class='tableTexting2'><td><b>" . findtekst('2534|Betalings-ID', $sprog_id) . "</b></td><td align=\"right\">&nbsp;$betalings_id</td></tr>";
 			print "<tr><td colspan=\"2\"><b><hr></b></tr>\n";
 			print "<tr class='tableTexting'><td colspan=\"2\"><a href=\"ordre.php?id=$id&returside=$returside&vis_lev_addr=1\">" . findtekst('355|Vis leveringsadresse', $sprog_id) . "</td></tr>\n";
-			// Plukliste buttons
-			include("../includes/topline_settings.php");
-			$pluklisteEmail = get_settings_value("pluklisteEmail", "ordre", "");
-			print "<tr><td colspan=\"2\"><hr></td></tr>\n";
-			print "<tr><td colspan=\"2\"><p style='text-align: center;'><b>Plukliste</b></p></td></tr>\n";
-			print "<tr><td colspan=\"2\" style='border:0;height:10px;'></td></tr>\n";
-			print "<tr><td colspan=\"2\" style='border:0;border-radius:4px;text-align:center;'><button type='button' onclick=\"window.location.href='udskriftsvalg.php?id=$id&valg=-1&formular=9'\" style='$buttonStyle;cursor: pointer; padding: 0.2rem; width: 125px;'>Print plukliste</button></td></tr>\n";
-			print "<tr><td colspan=\"2\" style='border:0;height:10px;'></td></tr>\n";
-			if ($pluklisteEmail) {
-				print "<tr><td colspan=\"2\" style='border:0;text-align:center;'>";
-				print "<input type='text' id='plukkommentar1' placeholder='Kommentar...' style='width:100%;margin-bottom:4px;padding:0.2rem;box-sizing:border-box;' class='inputbox'>";
-				print "<button type='button' onclick=\"var f=document.createElement('form');f.method='POST';f.action='sendPlukliste.php';var i=document.createElement('input');i.type='hidden';i.name='id';i.value='$id';f.appendChild(i);var k=document.createElement('input');k.type='hidden';k.name='kommentar';k.value=document.getElementById('plukkommentar1').value;f.appendChild(k);document.body.appendChild(f);f.submit();\" style='$buttonStyle;cursor:pointer;padding:0.2rem;width:100%'>Send plukliste</button>";
-				print "</td></tr>\n";
+			// Plukliste buttons — not applicable when the order is viewed inside a scaffolding case.
+			if (!$sag_id) {
+				include("../includes/topline_settings.php");
+				$pluklisteEmail = get_settings_value("pluklisteEmail", "ordre", "");
+				print "<tr><td colspan=\"2\"><hr></td></tr>\n";
+				print "<tr><td colspan=\"2\"><p style='text-align: center;'><b>Plukliste</b></p></td></tr>\n";
+				print "<tr><td colspan=\"2\" style='border:0;height:10px;'></td></tr>\n";
+				print "<tr><td colspan=\"2\" style='border:0;border-radius:4px;text-align:center;'><button type='button' onclick=\"window.location.href='udskriftsvalg.php?id=$id&valg=-1&formular=9'\" style='$buttonStyle;cursor: pointer; padding: 0.2rem; width: 125px;'>Print plukliste</button></td></tr>\n";
+				print "<tr><td colspan=\"2\" style='border:0;height:10px;'></td></tr>\n";
+				if ($pluklisteEmail) {
+					print "<tr><td colspan=\"2\" style='border:0;text-align:center;'>";
+					print "<input type='text' id='plukkommentar1' placeholder='Kommentar...' style='width:100%;margin-bottom:4px;padding:0.2rem;box-sizing:border-box;' class='inputbox'>";
+					print "<button type='button' onclick=\"var f=document.createElement('form');f.method='POST';f.action='sendPlukliste.php';var i=document.createElement('input');i.type='hidden';i.name='id';i.value='$id';f.appendChild(i);var k=document.createElement('input');k.type='hidden';k.name='kommentar';k.value=document.getElementById('plukkommentar1').value;f.appendChild(k);document.body.appendChild(f);f.submit();\" style='$buttonStyle;cursor:pointer;padding:0.2rem;width:100%'>Send plukliste</button>";
+					print "</td></tr>\n";
+				}
 			}
 		}
 		$lev_max = 0;
@@ -4315,7 +4424,9 @@ function ordreside($id, $regnskab)
 
 		// Query til kunde kontakt
 		$x = 0; #20140826
-		$a_email[$x] = $a_kontakt = array();
+		// Bugfix: previous init "$a_email[$x] = $a_kontakt = array()" set $a_email[0] to an empty array,
+		// which later rendered as ":Array" in the email dropdown when there were no contact rows.
+		$a_email = $a_kontakt = $a_mobil = array();
 		$q = db_select("select * from ansatte where konto_id='$konto_id' order by posnr", __FILE__ . " linje " . __LINE__);
 		while ($r = db_fetch_array($q)) {
 			$a_kontakt[$x] = htmlspecialchars($r['navn']);
@@ -4407,7 +4518,10 @@ function ordreside($id, $regnskab)
 			$ret = 1;
 		};
 		print "<tr><td style=\"color:$tekstcolor;\" title=\"$k_land\">" . findtekst('593|Lande', $sprog_id) . "</td><td colspan=\"2\"><input class = 'inputbox' type = 'text' style=\"width:200px\" name=\"land\" onfocus=\"document.forms[0].fokus.value=this.name;\"  value=\"$land\" onchange=\"javascript:docChange = true;\" $disabled></td></tr>\n";
-		if (!$sag_id && count($a_kontakt) <= 1) { #20140826 #20260409 show dropdown when multiple contacts
+		// Show plain input when there are no contacts, or when not in scaffolding with <=1 contact.
+		// Previously scaffolding (sag_id) always showed a dropdown, even with zero contacts — leaving
+		// the user stuck on "-- Skriv selv --" as the only option with no input revealed by default.
+		if ((!$sag_id && count($a_kontakt) <= 1) || count($a_kontakt) == 0) { #20140826 #20260409 show dropdown when multiple contacts
 			print "<tr><td>" . findtekst('2530|Att.', $sprog_id) . "</td><td colspan=\"2\"><input class = 'inputbox' type = 'text' style=\"width:200px\" name=\"kontakt\" onfocus=\"document.forms[0].fokus.value=this.name;\" value=\"$kontakt\" onchange=\"javascript:docChange = true;\" $disabled></td></tr>\n";
 		} else { #20260409 select dropdown with option to type custom name
 			if (empty($kontakt) && count($a_kontakt) > 0) $kontakt = $a_kontakt[0]; # default to first contact
@@ -4505,13 +4619,16 @@ function ordreside($id, $regnskab)
 				print "<tr><td style=\"color:$tekstcolor;\" title=\"$k_email\">" . findtekst('52|E-mail', $sprog_id) . "</td><td><input class=\"inputbox\" type=\"text\" style=\"width:130px\" name=\"email\" value=\"$email\" onchange=\"javascript:docChange = true;\"></td>\n";
 			}
 		} else {
-			print "<tr><td style=\"color:$tekstcolor;\" title=\"$k_email\">" . findtekst('52|E-mail', $sprog_id) . "</td><td><div class=\"ddbox2\"><input class=\"inputbox ddtext2\" type = 'text' name=\"email\" id=\"Textbox2\" value=\"$email\" onchange=\"javascript:docChange = true;\">\n";
-			print "<select name=\"DropDownExTextbox2\" id=\"DropDownExTextbox2\" tabindex=\"1000\" class=\"inputbox ddselect2\">\n";
+			// In scaffolding context (sag_id), shrink the combined email input+dropdown so it matches
+			// the width of the surrounding single-input fields (130px).
+			print "<tr><td style=\"color:$tekstcolor;\" title=\"$k_email\">" . findtekst('52|E-mail', $sprog_id) . "</td><td><div class=\"ddbox2\" style=\"width:130px;\"><input class=\"inputbox ddtext2\" type = 'text' name=\"email\" id=\"Textbox2\" style=\"width:113px !important;\" value=\"$email\" onchange=\"javascript:docChange = true;\">\n";
+			print "<select name=\"DropDownExTextbox2\" id=\"DropDownExTextbox2\" tabindex=\"1000\" class=\"inputbox ddselect2\" style=\"width:130px;\">\n";
 			if ($k_email) {
 				print "<option value=\"$k_email\">" . findtekst('35|Kunde', $sprog_id) . ": $k_email</option>\n";
 				print "<option style=\"font-size: 1px; background-color: #cccccc;\" disabled></option>";
 			}
 			for ($y = 0; $y < count($a_email); $y++) {
+				if (empty($a_email[$y])) continue; // skip contacts without an email
 				print "<option value=\"$a_email[$y]\">$a_kontakt[$y]:&nbsp;&nbsp;$a_email[$y]</option>\n";
 			}
 			print "<option>&nbsp;</option>\n";
@@ -5039,19 +5156,21 @@ function ordreside($id, $regnskab)
 				if (substr(findtekst('248|Ordrefelt 5', $sprog_id), 0, 1) != "#") print "<tr><td><span onmouseover=\"return overlib('" . findtekst('253|Denne tekst kan rettes under <i>Indstillinger</i> -> <i>Diverse</i> -> <i>Sprog</i><br>Find Id 248 & 253.', $sprog_id) . "',WIDTH=600);\" onmouseout=\"return nd();\">" . findtekst('248|Ordrefelt 5', $sprog_id) . "</span></td><td><input class = 'inputbox' type = 'text' name=\"felt_5\" style=\"width:200px\" value=\"$felt_5\" $disabled></td></tr>\n";
 			}
 			if ($betalings_id) print "<tr><td>" . findtekst('2534|Betalings-ID', $sprog_id) . ":</td><td>&nbsp;$betalings_id</td></tr>";
-			// Plukliste buttons
-			include("../includes/topline_settings.php");
-			$pluklisteEmail = get_settings_value("pluklisteEmail", "ordre", "");
-			print "<tr><td colspan=\"2\"><hr></td></tr>\n";
-			print "<tr><td colspan=\"2\"><p style='text-align: center;'><b>Plukliste</b></p></td></tr>\n";
-			print "<tr><td colspan=\"2\" style='border:0;height:10px;'></td></tr>\n";
-			print "<tr><td colspan=\"2\" style='border:0;border-radius:4px; text-align: center;'><button type='button' onclick=\"window.location.href='udskriftsvalg.php?id=$id&valg=-1&formular=9'\" style='$buttonStyle;cursor: pointer; padding: 0.2rem; width: 125px;'>Print plukliste</button></td></tr>\n";
-			print "<tr><td colspan=\"2\" style='border:0;height:10px;'></td></tr>\n";
-			if ($pluklisteEmail) {
-				print "<tr><td colspan=\"2\" style='border:0;text-align:center;'>";
-				print "<input type='text' id='plukkommentar2' placeholder='Kommentar...' style='width:100%;margin-bottom:4px;padding:0.2rem;box-sizing:border-box;' class='inputbox'>";
-				print "<button type='button' onclick=\"var f=document.createElement('form');f.method='POST';f.action='sendPlukliste.php';var i=document.createElement('input');i.type='hidden';i.name='id';i.value='$id';f.appendChild(i);var k=document.createElement('input');k.type='hidden';k.name='kommentar';k.value=document.getElementById('plukkommentar2').value;f.appendChild(k);document.body.appendChild(f);f.submit();\" style='$buttonStyle;cursor:pointer;padding:0.2rem;width:125px'>Send plukliste</button>";
-				print "</td></tr>\n";
+			// Plukliste buttons — not applicable when the order is viewed inside a scaffolding case.
+			if (!$sag_id) {
+				include("../includes/topline_settings.php");
+				$pluklisteEmail = get_settings_value("pluklisteEmail", "ordre", "");
+				print "<tr><td colspan=\"2\"><hr></td></tr>\n";
+				print "<tr><td colspan=\"2\"><p style='text-align: center;'><b>Plukliste</b></p></td></tr>\n";
+				print "<tr><td colspan=\"2\" style='border:0;height:10px;'></td></tr>\n";
+				print "<tr><td colspan=\"2\" style='border:0;border-radius:4px; text-align: center;'><button type='button' onclick=\"window.location.href='udskriftsvalg.php?id=$id&valg=-1&formular=9'\" style='$buttonStyle;cursor: pointer; padding: 0.2rem; width: 125px;'>Print plukliste</button></td></tr>\n";
+				print "<tr><td colspan=\"2\" style='border:0;height:10px;'></td></tr>\n";
+				if ($pluklisteEmail) {
+					print "<tr><td colspan=\"2\" style='border:0;text-align:center;'>";
+					print "<input type='text' id='plukkommentar2' placeholder='Kommentar...' style='width:100%;margin-bottom:4px;padding:0.2rem;box-sizing:border-box;' class='inputbox'>";
+					print "<button type='button' onclick=\"var f=document.createElement('form');f.method='POST';f.action='sendPlukliste.php';var i=document.createElement('input');i.type='hidden';i.name='id';i.value='$id';f.appendChild(i);var k=document.createElement('input');k.type='hidden';k.name='kommentar';k.value=document.getElementById('plukkommentar2').value;f.appendChild(k);document.body.appendChild(f);f.submit();\" style='$buttonStyle;cursor:pointer;padding:0.2rem;width:125px'>Send plukliste</button>";
+					print "</td></tr>\n";
+				}
 			}
 			print "<input type=\"hidden\" name=\"lev_navn\" value=\"$lev_navn\">\n";
 			print "<input type=\"hidden\" name=\"lev_addr1\" value=\"$lev_addr1\"><input type=\"hidden\" name=\"lev_addr2\" value=\"$lev_addr2\">\n";
@@ -5585,7 +5704,10 @@ $x = 0;
 				// print "<td colspan = '0' valign = 'top'><input class = 'inputbox' type = 'text' style=\"text-align:right;width:50px;\" name=\"posn0\" value=\"$posnr[0]\"></td>\n"; #20240426
 				//  print "<td valign = 'top'>";
 
-				print "<td style='background:#f9f9f9;'></td>"; // Empty cell for input row
+				// In scaffolding context skip the zebra-stripe background so the drag-handle column
+				// matches the rest of the transparent/white scaffolding styling.
+				if ($sag_id) print "<td></td>"; // Empty cell for input row
+				else print "<td style='background:#f9f9f9;'></td>"; // Empty cell for input row
 				print "<td valign='top'><input class='inputbox' type='text' style='text-align:right;width:50px;' name='posn0' value='$posnr[0]'></td>\n";
 				if ($art == 'DK') print "<td valign = 'top'><input class = 'inputbox' readonly=\"readonly\" size=\"12\" name=\"vare0\" onfocus=\"document.forms[0].fokus.value=this.name;\"></td>\n";
 				else  print "<td valign = 'top'><input class = 'inputbox' style=\"padding:2px;\" type = 'text' size=\"12\" name=\"vare0\" onfocus=\"document.forms[0].fokus.value=this.name;\" value=\"" . $varenr[0] . "\"></td>\n"; #20180305
@@ -5619,7 +5741,7 @@ $x = 0;
 				}
 				$txt1489 = str_replace('\n', "\n", findtekst('1489|Indsættes for at lave fed tekst. Sæt cursoren imellem <b> og </b>. (F.eks. <b>Lorem ipsum</b>)', $sprog_id));
 				$txt1490 = str_replace('\n', "\n", findtekst('1490|Indsættes for at lave kursiv tekst. Sæt cursoren imellem <i> og </i>. (F.eks. <i>Lorem ipsum</i>) Kan også bruges til tom linje. Her insættes <i></i> uden tekst.', $sprog_id));
-				print "<td valign = 'top' colspan=\"2\"><input type=\"button\" name=\"insert\" class=\"button white small bold\" value=\"B\" style=\"border-radius: 4px;\" onClick=\"this.form.beskrivelse0.value=this.form.beskrivelse0.value.concat('<b></b>'); this.form.beskrivelse0.focus();\" title=\"$txt1489\">\n"; #2013.11.29 Sætter fokus på felt ved clik
+				print "<td valign = 'top' colspan=\"2\" style=\"white-space:nowrap;\"><input type=\"button\" name=\"insert\" class=\"button white small bold\" value=\"B\" style=\"border-radius: 4px;\" onClick=\"this.form.beskrivelse0.value=this.form.beskrivelse0.value.concat('<b></b>'); this.form.beskrivelse0.focus();\" title=\"$txt1489\">\n"; #2013.11.29 Sætter fokus på felt ved clik
 				print "<input type=\"button\" name=\"insert\" class=\"button white small italic\" value=\"I\" style=\"border-radius: 4px;\" onClick=\"this.form.beskrivelse0.value=this.form.beskrivelse0.value.concat('<i></i>'); this.form.beskrivelse0.focus();\" title='$txt1490'></td>\n";
 				print "</tr>\n";
 			}
@@ -5849,7 +5971,18 @@ $x = 0;
 
 				print "<td align=\"center\" width=$width><input type=\"submit\" class=\"button gray medium\" style=\"width:75px; border-radius: 4px;\" value=\"$txt\" name=\"$b_name\" $tmp title=\"$tekst2\" onclick=\"javascript:docChange = false;\"></td>\n";
 			}
-			if ($art != 'DK') print "<td align=\"center\"><input type=\"submit\" class=\"button gray medium\" style=\"width:75px; border-radius: 4px;\" value=\"" . findtekst('1100|Kopier', $sprog_id) . "\" name=\"copy\" title=\"" . findtekst('1459|Kopiér til ny ordre med samme indhold', $sprog_id) . "\"></td>\n";
+			if ($art != 'DK') {
+				if ($sag_id) {
+					// In scaffolding context, route Kopier through opret_ordre_kopi (a known-good path
+					// that creates a new offer in the same case, copying lines from this one). The
+					// regular `name="copy"` form-submit path was leaving the case relationships in
+					// a broken state, so users saw the case as "deleted".
+					$copyUrl = "ordre.php?funktion=opret_ordre_kopi&sag_id=$sag_id&konto_id=$konto_id&ordre_id=$id";
+					print "<td align=\"center\"><a class=\"button gray medium mozMedium\" href=\"$copyUrl\" title=\"" . findtekst('1459|Kopiér til ny ordre med samme indhold', $sprog_id) . "\">" . findtekst('1100|Kopier', $sprog_id) . "</a></td>\n";
+				} else {
+					print "<td align=\"center\"><input type=\"submit\" class=\"button gray medium\" style=\"width:75px; border-radius: 4px;\" value=\"" . findtekst('1100|Kopier', $sprog_id) . "\" name=\"copy\" title=\"" . findtekst('1459|Kopiér til ny ordre med samme indhold', $sprog_id) . "\"></td>\n";
+				}
+			}
 			$txt = findtekst('2375|Sæt', $sprog_id);
 			if ($status < 3 && !$betalt && $vis_saet && $konto_id) {
 				print "<td align=\"center\" width=$width><input type=\"button\" class=\"button gray medium\" style=\"width:75px; border-radius: 4px;\" value=\"$txt\" name=\"ret_saet\" title=\"" . findtekst('1498|Klik her for at oprette eller rette i varesæt', $sprog_id) . "\" onclick=\"jacascript:window.location.href='saetpris.php?id=$id'\"></td>\n";
@@ -6600,8 +6733,8 @@ function batch ($linje_id) {
 		$rest=array();
 		$lev_rest=$leveres;
 
-		if (isset($lager)) $query = db_select("select * from batch_kob where vare_id=$vare_id and rest > 0 and lager = $lager order by kobsdate",__FILE__ . " linje " . __LINE__);
-		else $query = db_select("select * from batch_kob where vare_id=$vare_id and rest > 0 order by kobsdate",__FILE__ . " linje " . __LINE__);
+		if (isset($lager)) $query = db_select("select * from batch_kob where vare_id=$vare_id and rest > 0 and lager = $lager order by " . fefo_order_clause(),__FILE__ . " linje " . __LINE__);
+		else $query = db_select("select * from batch_kob where vare_id=$vare_id and rest > 0 order by " . fefo_order_clause(),__FILE__ . " linje " . __LINE__);
 		while ($row = db_fetch_array($query)) {
 			$x++;
 			$batch_kob_id=$row['id'];
@@ -6718,12 +6851,15 @@ if ($menu == 'T') {
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script src="orderIncludes/ordre_dragdrop.js"></script>
 <!-- <script src ="orderIncludes/invoice_dragdrop.js"></script> -->
+<?php if (empty($sag_id)) { ?>
 <style>
         .ordreform {
                 overflow: auto;
                 height: calc(100vh - 50px);
         }
 </style>
+<?php } // In scaffolding (sag_id) let .ordreform size to its content so the surrounding scaffolding
+      // layout controls the page height instead of a fixed viewport-based height. ?>
 
 <script>
 let isSubmitting = false;
