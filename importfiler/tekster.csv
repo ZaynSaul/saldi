@@ -3052,80 +3052,6 @@
 3052	Kilometer	Kilometres	Kilometer
 3053	Sagsadresse	Project address	Saksadresse
 3054	Med. nr.	Emp. no.	Med. nr.
-<<<<<<< stocklog
-3055	Medarbejder navn	Employee name	Medarbeider navn
-3056	Lagerhistorik	Inventory history	Lagerhistorikk
-3057	
-3058	
-3059	
-3060	
-3061	
-3062	
-3063	
-3064	
-3065	
-3066	
-3067	
-3068	
-3069	
-3070	
-3071	
-3072	
-3073	
-3074	
-3075	
-3076	
-3077	
-3078	
-3079	
-3080	
-3081	
-3082	
-3083	
-3084	
-3085	
-3086	
-3087	
-3088	
-3089	
-3090	
-3091	
-3092	
-3093	
-3094	
-3095	
-3096	
-3097	
-3098	
-3099	
-3100	
-3101	
-3102	
-3103	
-3104	
-3105	
-3106	
-3107	
-3108	
-3109	
-3110	
-3111	
-3112	
-3113	
-3114	
-3115	
-3116	
-3117	
-3118	
-3119	
-3120	
-3121	
-3122	
-3123	
-3124	
-3125	
-3126	
-=======
 3055	Medarbejdernavn	Employee name	Medarbeidernavn
 3056	Transport	Transport	Transport
 3057	Sum inkl. transport	Total incl. transport	Sum inkl. transport
@@ -3198,7 +3124,6 @@
 3124	Fejl	Error	Feil
 3125	Kritisk	Critical	Kritisk
 3126	Liste med arbejdssedler	List of worksheets	Liste med arbeidssedler
->>>>>>> master
 3127	Knap navn	Button name	Knappnavn
 3128	Angiv det navn der skal vises på knappen i ordresiden. Hvis tomt bruges firmanavn eller bynavn.	Enter the name to display on the button on the order page. If empty, company name or city is used.	Angi navnet som skal vises på knappen på ordresiden. Hvis tom, brukes firmanavn eller bynavn.
 3129	API URL	API URL	API URL
@@ -3332,7 +3257,7 @@
 3257	Indtast et navn på den baggrund, du vil tilføje	Enter a name for the background you want to add	Skriv inn et navn på bakgrunnen du vil legge til
 3258	Vælg skabelon	Select template	Velg mal
 3259	Viser filer for	Showing files for	Viser filer for
-3260	
+3260	Lagerhistorik	Inventory history	Lagerhistorikk
 3261	
 3262	
 3263	
