@@ -4,7 +4,7 @@
 //               \__ \/ _ \| |_| |) | | _ | |) |  <
 //               |___/_/ \_|___|___/|_||_||___/|_\_\
 //
-// --- debitor/pos_ordre.php --- patch 5.0.0 --- 2026-02-11 ---
+// --- debitor/pos_ordre.php --- patch 5.0.0 --- 2026-04-03 ---
 // LICENSE
 //
 // This program is free software. You can redistribute it and / or
@@ -92,7 +92,8 @@
 // 20260204 PHR Back button did not work if focus was 'Modtaget'
 // 20260211 PHR Updated cashCount 
 // 20260225 PHR Updated cashCount
-
+// 20260316 PHR Corrected Currency error in cashCount
+// 20260403 PHR Added && '$leveres[0] != 0' as leveres else is set to 0 if qty was changed and kokkelprint became reset.
 @session_start();
 $s_id = session_id();
 ob_start();
@@ -634,7 +635,7 @@ if ($kasse && $kassebeholdning && !isset($_POST['zRapport'])) {
 			(int) $_POST['kr_500'] * 500 +
 			(int) $_POST['kr_1000'] * 1000 +
 			(float) usdecimal($_POST['kr_andet'], 2);
-		(int) $_POST['rappen_5'] * 0.05 +
+			(int) $_POST['rappen_5'] * 0.05 +
 			(int) $_POST['rappen_10'] * 0.1 +
 			(int) $_POST['rappen_20'] * 0.2;
 		(isset($_POST['optael']) && $_POST['optael'] == findtekst('555|Godkend',$sprog_id)) ? $godkendt = 1 : $godkendt = 0;
@@ -799,8 +800,6 @@ if ($vare_id_ny && !$vare_id) {
 } elseif (($vare_id_ny && $vare_id) || (!$id && isset($_POST['afslut']) && $_POST['afslut'])) { #20161014-4
 	if (!$id || $id == 0)
 		$id = opret_posordre(NULL, $kasse);
-#		include("pos_ordre_includes/showPosLines/productLines.php");
-#echo "pos_ordre_includes/showPosLines/productLines.php<br>";
 	if (!isset($momssats)) { #20140526
 		$r = db_fetch_array(db_select("select momssats from ordrer where id = '$id'", __FILE__ . " linje " . __LINE__));
 		$momssats = $r['momssats'];
@@ -1406,8 +1405,8 @@ if ($vare_id) {
 		#		if (!$modtaget2) $modtaget2=$sum;
 	} else
 		$modtaget = usdecimal($modtaget, 2);
-	$modtaget *= 1;
-	$betalt = $modtaget + $modtaget2;
+		$modtaget = floatval($modtaget);
+		$betalt   = $modtaget + $modtaget2;
 	if ($betaling == 'Konto' && $sum && !$modtaget * 1)
 		$modtaget = $sum;
 
@@ -1511,9 +1510,12 @@ if ($vare_id) {
 					print "<BODY onLoad=\"javascript:alert('$svar')\">\n";
 					$fokus = "pris_ny";
 				} else {
-					$r = db_fetch_array(db_select("select max(id) as linje_id from ordrelinjer where ordre_id = '$id' and varenr='$varenr_ny'", __FILE__ . " linje " . __LINE__));
-					if ($r['linje_id'] && isset($leveret[0]) && is_numeric($leveret[0]))
-						db_modify("update ordrelinjer set leveret='$leveret[0]' where id='$r[linje_id]'", __FILE__ . " linje " . __LINE__);
+					$qtxt = "select max(id) as linje_id from ordrelinjer where ordre_id = '$id' and varenr='$varenr_ny'";
+					$r = db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__));
+					if ($r['linje_id'] && isset($leveret[0]) && is_numeric($leveret[0]) && $leveret[0] != 0) { #20260403
+						$qtxt = "update ordrelinjer set leveret='$leveret[0]' where id='$r[linje_id]'";
+						db_modify($qtxt, __FILE__ . " linje " . __LINE__);
+					}					
 					$varenr_ny = $next_varenr;
 					$tmp = $antal_ny; #Til kundedisplay
 					$antal_ny = NULL;
@@ -2703,8 +2705,6 @@ function posbogfor($kasse, $regnstart, $reportNumber)
 						$alert1 = findtekst(1869, $sprog_id);
 						$txt1 = findtekst(1870, $sprog_id);
 						$txt2 = findtekst(1871, $sprog_id);
-						#						echo "$svar<br>\n";
-#						print "$txt1, ID $ordre_id ordre $ordrenr, d=$d_kontrol, k=$k_kontrol $txt2";
 						print "<BODY onLoad=\"javascript:alert('$alert1')\">\n";
 						exit;
 						print "<meta http-equiv=\"refresh\" content=\"0;URL=pos_ordre.php?id=$id\">\n";
@@ -2940,7 +2940,7 @@ function posbogfor($kasse, $regnstart, $reportNumber)
 	print "<meta http-equiv=\"refresh\" content=\"0;URL=pos_ordre.php?udskriv_kasseopg=$pfnavn&kasse=$kasse\">\n"; #20190813
 } #?id=$id&udskriv_kasseopg=$pfnavn&kasse=$kasse
 
-function kasseoptalling(
+function kasseoptalling( // Called from cashBalance.php
 	$kasse,
 	$optalt,
 	$ore_10,
@@ -3109,11 +3109,10 @@ function kasseoptalling(
 		$omsatning += $kortsum[$x];
 	}
 	if (!$optalt && $_COOKIE['saldi_kasseoptael']) {
-		$kr = array(0.1, 0,2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 1);
+		$kr = array(0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 1);
 		$ot = explode(chr(9), $_COOKIE['saldi_kasseoptael']);
 		for ($o = 0; $o < count($ot); $o++) {
-			if (!isset($kr[$o]))
-				$kr[$o] = 0;
+			if (!isset($kr[$o])) $kr[$o] = 0;
 			$optalt += (float) $kr[$o] * (float) $ot[$o];
 		}
 		$kr = $ot = NULL;
@@ -3133,7 +3132,6 @@ function kasseoptalling(
 
 	$forventet = $byttepenge + $tilgang + $kortdiff;
 	(isset($_POST['calculate']) || (isset($_POST['optael']) && $_POST['optael'])) ? $ny_morgen = $optalt - $udtages : $ny_morgen = 0; #20200112
-
 	specifyAmount($omsatning, $kassediff, $optalt, $db, $kasse, $ifs, $ore_10, $ore_20, $ore_50, $kr_1, $kr_2, $kr_5, $kr_10, $kr_20, $kr_50, $kr_100, $kr_200, $kr_500, $kr_1000, $kr_andet); #, $fiveRappen, $tenRappen, $twentyRappen
 	if ($valuta[0]) {
 		for ($x = 0; $x < count($valuta); $x++) {

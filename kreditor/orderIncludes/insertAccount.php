@@ -40,7 +40,7 @@ function insertAccount($id, $konto_id) {
 	global $momssats;
 	global $postnr,$regnaar;
 	global $status,$sum;
-	global $valuta,$omlev;
+	global $valuta,$omlev,$afd;
 	$tidspkt=date("U");
 
 	if (!$konto_id) {
@@ -53,6 +53,23 @@ function insertAccount($id, $konto_id) {
 	if (!$status)      $status      = 0;
 	if (!$sum)         $sum         = 0;
 	if (!$art)         $art         = 'KO';
+
+	if (!$afd) {
+		$qtxt = "select ansat_id from brugere where brugernavn = '$brugernavn'";
+		if ($r = db_fetch_array(db_select($qtxt,__FILE__ . " linje " . __LINE__)) && if_isset($r,NULL,'ansat_id')) {
+			$r = db_fetch_array(db_select("select afd from ansatte where id = " . (int)$r['ansat_id'],__FILE__ . " linje " . __LINE__));
+			if ($r && if_isset($r, NULL, 'afd')) $afd=$r['afd'];
+		}
+	}
+	$afd = (int)$afd;
+
+	// Set lager based on afd if lager is not already set
+	if (!$lager && $afd) {
+		$r_afd_lg = db_fetch_array(db_select("select box1 from grupper where kodenr='$afd' and art = 'AFD'",__FILE__ . " linje " . __LINE__));
+		if ($r_afd_lg && $r_afd_lg['box1']) {
+			$lager = (int)$r_afd_lg['box1'];
+		}
+	}
 
 	$qtxt = "select * from adresser where id = '$konto_id'";
 	$q = db_select($qtxt,__FILE__ . " linje " . __LINE__);
@@ -92,7 +109,7 @@ function insertAccount($id, $konto_id) {
 			$momssats='0.00';
 		}
 	} elseif ($konto_id) print "<BODY onLoad=\"javascript:alert('Kreditor er ikke tilknyttet en kreditorgruppe')\">";
-	$momssats=(float)$momssats;
+	$momssats=(float)usdecimal($momssats);
 	if ((!$id)&&($firmanavn)) {
 		transaktion('begin');
 		$ordredate=date("Y-m-d");
@@ -100,12 +117,12 @@ function insertAccount($id, $konto_id) {
 		$qtxt = "insert into ordrer ";
 		$qtxt.= "(ordrenr,konto_id,kontonr,firmanavn,addr1,addr2,postnr,bynavn,land,kontakt,lev_navn,lev_addr1,";
 		$qtxt.= "lev_addr2,lev_postnr,lev_bynavn,lev_kontakt,betalingsdage,betalingsbet,cvrnr,notes,art,ordredate,";
-		$qtxt.= "email,momssats,status,ref,lager,sum,hvem,tidspkt,valuta,kred_ord_id,omvbet)";
+		$qtxt.= "email,momssats,status,ref,afd,lager,sum,hvem,tidspkt,valuta,kred_ord_id,omvbet)";
 		$qtxt.= " values ";
 		$qtxt.= "($ordrenr,$konto_id,'$kontonr','$firmanavn','$addr1','$addr2','$postnr','$bynavn',";
 		$qtxt.= "'$land','$kontakt','$lev_navn','$lev_addr1','$lev_addr2','$lev_postnr','$lev_bynavn','$lev_kontakt',";
 		$qtxt.= "'$betalingsdage','$betalingsbet','$cvrnr','$notes','$art','$ordredate','$email','$momssats',$status,";
-		$qtxt.="'$brugernavn','$lager','$sum','$brugernavn','$tidspkt','$valuta','$kred_ord_id','$omlev')";
+		$qtxt.="'$brugernavn','$afd','$lager','$sum','$brugernavn','$tidspkt','$valuta','$kred_ord_id','$omlev')";
 /*		
 		$qtxt = "insert into ordrer ";
 		$qtxt.= "(ordrenr, konto_id, kontonr, firmanavn, addr1, addr2, postnr, bynavn, land,betalingsdage,  ";

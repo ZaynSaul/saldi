@@ -4,7 +4,7 @@
 //               \__ \/ _ \| |_| |) | | _ | |) |  <
 //               |___/_/ \_|___|___/|_||_||___/|_\_\
 //
-// --- includes/db_query.php ---patch 5.0.0 ----2026-02-13--------------
+// --- includes/db_query.php ---patch 5.0.0 ----2026-03-05--------------
 //                           LICENSE
 //
 // This program is free software. You can redistribute it and / or
@@ -27,9 +27,9 @@
 // 20250121 connection as first parameter in pg_*
 // 20250510 LOE Replaced mysql_query() with mysqli_query() to adjust for php7&above
 // 20250510 LOE Added check for empty database and added error message if database is empty
-// 20050808 PHR replaced if_isset by if(isset()
-// 20050808 PHR Added to function db_escape_string: $qtext = mb_convert_encoding($qtext, 'UTF-8', 'Windows-1252');
-
+// 20250808 PHR replaced if_isset by if(isset()
+// 20250808 PHR Added to function db_escape_string: $qtext = mb_convert_encoding($qtext, 'UTF-8', 'Windows-1252');
+// 20260305 PHR trying to prevent writing to db_modify.log if writing is in masterbase
 
 if (!function_exists('get_relative')) {
     function get_relative() {
@@ -129,8 +129,8 @@ if (!function_exists('db_modify')) {
 		$temp = get_relative() . 'temp/' . $db;
 
 		$qtext=injecttjek($qtext);
-#20190704 START
-		 if ($db_type == "mysql" || $db_type == "mysqli") {
+		#20190704 START
+		if ($db_type == "mysql" || $db_type == "mysqli") {
 			
             $db_query = mysqli_query($connection, $qtext);  //mysql_query deprecated in php 7 and above
 			if (!$db_query) {
@@ -143,10 +143,10 @@ if (!function_exists('db_modify')) {
 			$qtext=str_replace(' like ',' ilike ',$qtext);
 			$db_query=pg_query($connection, $qtext);
 		}
-#20190704 END
+		#20190704 END
 		
 		(isset($db)) ? $db=trim($db) : $db='';
-		if ($db_skriv_id>1) {
+		if ($db_skriv_id>1 && $db != $sqdb) {
 				$fp=fopen("$temp/.ht_modify.log","a");
 				fwrite($fp,"-- ".$brugernavn." ".date("Y-m-d H:i:s").": ".$spor.": ".$db_skriv_id."\n");
 				fwrite($fp,$qtext.";\n");
@@ -318,7 +318,14 @@ if (!function_exists('db_fetch_array')) {
                 error_log("Error: db_fetch_array() - Invalid query result");
                 return false;
             }
-        } else return pg_fetch_array($qtext);
+        } else {
+            if ($qtext && $qtext !== false) {
+                return pg_fetch_array($qtext);
+            } else {
+                error_log("Error: db_fetch_array() - Invalid query result (pg)");
+                return false;
+            }
+        }
 	}
 }
 

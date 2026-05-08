@@ -527,7 +527,7 @@ if ($db_type=="mysql" or $db_type=="mysqli") {
 	$qtxt.= "($id_column, var_name text, var_grp text, var_value text, var_description text, ";
 	$qtxt.= "user_id integer, group_id integer, pos_id integer, PRIMARY KEY (id))";
 	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
-	db_modify("CREATE TABLE shop_adresser ($id_column,saldi_id integer,shop_id integer,PRIMARY KEY (id))",__FILE__ . " linje " . __LINE__);
+	db_modify("CREATE TABLE shop_adresser ($id_column,saldi_id integer,shop_id integer,afd integer DEFAULT 0,PRIMARY KEY (id))",__FILE__ . " linje " . __LINE__);
 	db_modify("CREATE TABLE shop_varer ($id_column,saldi_id integer,saldi_variant integer,shop_id integer,shop_variant integer,PRIMARY KEY (id))",__FILE__ . " linje " . __LINE__);
 	db_modify("CREATE TABLE shop_ordrer ($id_column,saldi_id integer,shop_id integer,PRIMARY KEY (id))",__FILE__ . " linje " . __LINE__);
 	db_modify("CREATE TABLE varianter ($id_column,beskrivelse text,shop_id integer,PRIMARY KEY (id))",__FILE__ . " linje " . __LINE__);
@@ -662,6 +662,10 @@ if ($db_type=="mysql" or $db_type=="mysqli") {
 
 	db_modify("CREATE TABLE stockmovement ($id_column, vareid integer, beholdning integer, PRIMARY KEY (id))", __FILE__ . " linje " . __LINE__);
 
+	$qtxt = "CREATE TABLE pool_files ($id_column, filename varchar(255), subject text, account varchar(50), ";
+	$qtxt.= "amount varchar(50), file_date varchar(50), updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ";
+	$qtxt.= "invoice_number varchar(100), description text, currency varchar(10), PRIMARY KEY (id))";
+	db_modify($qtxt, __FILE__ . " linje " . __LINE__);
 
 	if ($db_type=="mysql" || $db_type=="mysqli") {
 		db_modify("ALTER TABLE adresser ADD modtime TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", __FILE__ . " linje " . __LINE__);

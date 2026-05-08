@@ -92,7 +92,7 @@ if (isset($_POST['submit'])) {
 	$qtxt="update regnskab set lukket='' where lukket is NULL";
 	db_modify($qtxt,__FILE__ . " linje " . __LINE__);
 }
-if ($menu=='S') {
+if (isset($menu) && $menu=='S') {
 	print "<table width='100%' height='100%' border='0' cellspacing='0' cellpadding='0'><tbody>";
 	print "<tr><td align='center' valign='top' height='25px'>";
 	print "<table width='100%' align='center' border='0' cellspacing='2' cellpadding='0'><tbody>";
@@ -133,7 +133,7 @@ if ($menu=='S') {
 	print "<table width=\"100%\" align=\"center\" border=\"0\" cellspacing=\"2\" cellpadding=\"0\"><tbody>";
 	print "<td width=\"10%\" $top_bund><a href=../index/admin_menu.php accesskey=L>".findtekst('30|Tilbage', $sprog_id)."</a></td>";
 	print "<td width=\"75%\" $top_bund align=\"center\">".findtekst('340|Vis regnskaber', $sprog_id)."</td>";#Vis regnskaber
-	print "<td width='5%' $top_bund><a href='license_manager.php'>Licens</a></td>";
+	print "<td width='5%' $top_bund><a href='admin_panel.php'>Admin Panel</a></td>";
 	print "<td width=\"5%\" $top_bund align = \"center\">";
 	if ($showClosed) print "<a href='vis_regnskaber.php?sort=$sort&rediger=$rediger'>".findtekst('1906|Skjul \'Luk\'', $sprog_id)." </a>";#Skjul Luk
 	else print "<a href='vis_regnskaber.php?sort=$sort&rediger=$rediger&showClosed=on'>".findtekst('1907|Vis \'Luk\'', $sprog_id)." </a>";#Vis Luk
