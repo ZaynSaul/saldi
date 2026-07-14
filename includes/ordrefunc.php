@@ -100,6 +100,7 @@
 // 20260618 Sawaneh Stock warning popup now triggers when sale quantity would leave stock below min_lager
 // 20260619 Sawaneh check_stock_warning reads stock from lagerstatus (sum across warehouses) like the order-line red-highlight, not the drifting varer.beholdning field
 // 20260630 CDX/PK Changed the cleanup so that negative lines are only deleted if there is also at least one normal line (item no. >= 0) on the same order.
+// 20260713 SZ function krediter: fixed batch-controlled delivery corrections not restoring batch_kob.rest - fell back to linje_id when kred_linje_id is empty (plain DO correction, not a real credit note)
 
 function levering($id,$hurtigfakt,$genfakt,$webservice=false) {
 	/* echo "<!--function levering start-->"; */
@@ -783,8 +784,17 @@ function krediter($id, $levdate, $beholdning, $vare_id, $antal, $pris, $linje_id
 	$kred_linje_id = $row['kred_linje_id'];
 	$posnr = $row['posnr'];
 
+	// 20260713 SZ For a real credit note, kred_linje_id points back to the original invoiced line
+	// whose batch_salg/batch_kob rows must be restored. For a plain negative delivery correction on
+	// a DO order (not a credit note), kred_linje_id is never populated, so this used to query
+	// "batch_salg where linje_id=0", match nothing, and silently skip the batch_kob.rest restore
+	// below - leaving the purchase lot's reserved quantity wrong. Fall back to this line's own
+	// batch_salg rows, and exclude batch_kob_id=0 rows (this function's own unlinked correction
+	// inserts further down) so a repeated correction doesn't match its own leftover row.
+	$batch_salg_linje_id = $kred_linje_id ? $kred_linje_id : $linje_id;
+
 	$x = 0;
-	$qtxt = "select * from batch_salg where linje_id=$kred_linje_id order by id desc";
+	$qtxt = "select * from batch_salg where linje_id=$batch_salg_linje_id and batch_kob_id != 0 order by id desc";
 	$q = db_select($qtxt, __FILE__ . " linje " . __LINE__);
 	while ($r = db_fetch_array($q)) {
 		$x++;
@@ -813,7 +823,10 @@ function krediter($id, $levdate, $beholdning, $vare_id, $antal, $pris, $linje_id
 	#	$r=db_fetch_array(db_select("select max(id) as id from batch_kob where linje_id=$linje_id",__FILE__ . " linje " . __LINE__));
 	#	$q = db_select("select id from batch_kob where linje_id=$kred_linje_id",__FILE__ . " linje " . __LINE__);
 	#	$batch_kob_id=$r['id'];
-	lagerstatus($vare_id, $variant_id, $lager, -$antal);
+	// 20260713 SZ Removed: linjeopdat() (this function's only caller) already applies this exact
+	// stock adjustment for the same vare_id/variant_id/lager via its own lagerstatus update just
+	// before calling krediter() - this second call was double-counting every correction, restoring
+	// twice as much stock as was actually returned.
 	if ($serienr || $serienr == '0') {
 		$q = db_select("select * from serienr where salgslinje_id=-$kred_linje_id", __FILE__ . " linje " . __LINE__);
 		while ($r = db_fetch_array($q)) {

@@ -99,6 +99,7 @@
 // 20260701 NTR Updated the first plukliste buttons to be the same logic as the second plukliste.
 // 20260708 MJ Default fakturadato to today when pressing Invoice and the field is empty.
 // 20260709 Sawaneh Show delivery address + Extra fields together on open orders (setting-controlled), fixed the Show-delivery-address checkbox, and moved the plukliste/writing-field buttons to the action row
+// 20260713 SZ Fixed delivery corrections: entering a negative Deliver value and clicking Gem now triggers levering.php so leveret is actually adjusted, instead of silently saving leveres with no effect
 
 @session_start();
 $s_id = session_id();
@@ -3180,15 +3181,24 @@ if ($b_submit == 'doInvoice' && $status < 3) {
 ################### NEGATIVE LEVERES (subtract from delivered) ####
 // 20260304 When user enters negative leveres on a fully-delivered order and clicks Gem,
 // trigger the delivery flow to adjust batch_salg records and leveret.
-/*
+// 20260305 Reverted: re-querying the DB for any 'leveres < 0' row made every Gem redirect to
+// levering.php whenever a stale negative leveres was left on ANY line, not just the one just edited.
+// 20260713 SZ Re-enabled, scoped to $leveres[$x] as just parsed/clamped above (this request's
+// submitted values, already written to ordrelinjer by the save loop) instead of re-querying the DB,
+// so Gem only triggers delivery when the current submit actually contains a negative correction.
 if ($b_submit == 'Gem' && $bogfor != 0 && $status < 3 && $id) {
-	$q_neg = db_select("select id from ordrelinjer where ordre_id = '$id' and leveres < 0", __FILE__ . " linje " . __LINE__);
-	if (db_fetch_array($q_neg)) {
+	$neg_correction = false;
+	for ($x = 1; $x <= $linjeantal; $x++) {
+		if (isset($leveres[$x]) && $leveres[$x] < 0) {
+			$neg_correction = true;
+			break;
+		}
+	}
+	if ($neg_correction) {
 		print "<meta http-equiv=\"refresh\" content=\"0;URL=levering.php?id=$id\">\n";
 		exit;
 	}
 }
-*/
 ############################ LEVER ################################
 
 if (strstr($b_submit, 'Lev') && $bogfor != 0 && $status < 3) {
