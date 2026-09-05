@@ -42,6 +42,9 @@
 //             splits could still compute the same "next" number. Serialize new-order creation with
 //             an advisory lock (pg_advisory_xact_lock, auto-released on commit; GET_LOCK/RELEASE_LOCK
 //             on MySQL, released explicitly after commit since MySQL locks aren't transaction-scoped).
+// 20260905 SZ MB-38/CodeRabbit: GET_LOCK() returns 0 on timeout / NULL on error, which the earlier
+//             fix ignored - check for a return of 1 and abort the split with an alert instead of
+//             risking a duplicate ordrenr if the lock wasn't actually acquired.
 
 print "<!-- BEGIN orderIncludes/moveOrderLines.php -->";
 #print "moveOrderLines.php<br>";
@@ -80,10 +83,19 @@ else {
 		# MB-38/CodeRabbit: serialize ordrenr allocation so two concurrent splits can't compute the
 		# same "next free number" - hold the lock until this transaction actually commits (below),
 		# since a concurrent transaction's MAX(ordrenr) can't see our new row until then anyway.
-		if ($db_type == 'mysql' || $db_type == 'mysqli')
-			db_select("SELECT GET_LOCK('kreditor_ordre_split_ordrenr', 10)", __FILE__ . " linje " . __LINE__);
-		else
+		if ($db_type == 'mysql' || $db_type == 'mysqli') {
+			$lockResult = db_fetch_array(db_select("SELECT GET_LOCK('kreditor_ordre_split_ordrenr', 10) AS lock_ok", __FILE__ . " linje " . __LINE__));
+			if ($lockResult['lock_ok'] != 1) {
+				# GET_LOCK returns 0 on timeout or NULL on error - don't risk allocating a
+				# duplicate ordrenr, make the user retry the split instead.
+				alert("Kunne ikke oprette ny ordre lige nu (ordrenummer var l&aring;st af en anden bruger). Pr&oslash;v igen.");
+				transaktion('rollback');
+				exit;
+			}
+		} else {
+			# pg_advisory_xact_lock blocks until it can acquire the lock (no timeout/failure case)
 			db_select("SELECT pg_advisory_xact_lock(hashtext('kreditor_ordre_split_ordrenr'))", __FILE__ . " linje " . __LINE__);
+		}
 		$newOrderCreated = true;
 		$qtxt = "select max(id) as new_id FROM ordrer";
 		$r = db_fetch_array(db_select($qtxt, __FILE__ . " linje " . __LINE__));
